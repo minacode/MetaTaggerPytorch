@@ -4,11 +4,21 @@ from random import shuffle
 import torch
 import torch.nn as nn
 import torch.nn.init as init
+from torch.nn.utils.rnn import pack_sequence
 import torch.optim as optim
 
 
+class BatchContainer:
+    def __init__(self, chars, words, tags, firsts, lasts):
+        self.chars = chars
+        self.words = words
+        self.tags = tags
+        self.firsts = firsts
+        self.lasts = lasts
+
+
 class LSTMModel(nn.Module):
-    def __init__(self, n_chars, n_words, n_tags, embedding_dim, debug=False):
+    def __init__(self, n_chars, n_words, n_tags, embedding_dim, debug=False, cuda=True):
         super(LSTMModel, self).__init__()
 
         self.debug = debug
@@ -53,6 +63,12 @@ class LSTMModel(nn.Module):
         self.char_loss = nn.CrossEntropyLoss(reduction='mean')
         self.word_loss = nn.CrossEntropyLoss(reduction='mean')
         self.meta_loss = nn.CrossEntropyLoss(reduction='mean')
+
+        if cuda:
+            self.device = torch.device('cuda')
+            self.apply(lambda m: m.cuda())
+        else:
+            self.device = torch.device('cpu')
 
         self.char_optimizer = optim.Adam(
             list(self.char_embedding.parameters()) +
@@ -120,11 +136,11 @@ class LSTMModel(nn.Module):
         for i in range(epochs):
             shuffle(sentences)
             for sentence in sentences:
-                chars = torch.LongTensor([sentence['chars']])
-                words = torch.LongTensor([sentence['words']])
-                targets = torch.LongTensor([sentence['tags']])
-                firsts = torch.LongTensor([sentence['firsts']])
-                lasts = torch.LongTensor([sentence['lasts']])
+                chars = torch.LongTensor(sentence['chars'], device=self.device)
+                words = torch.LongTensor(sentence['words'], device=self.device)
+                targets = torch.LongTensor(sentence['tags'], device=self.device)
+                firsts = torch.LongTensor(sentence['firsts'], device=self.device)
+                lasts = torch.LongTensor(sentence['lasts'], device=self.device)
 
                 if self.debug:
                     print('chars', chars, 'words', words, 'targets', targets, 'firsts', firsts, 'lasts', lasts, sep='\n')
@@ -206,11 +222,12 @@ class LSTMModel(nn.Module):
             self.word_optimizer.load_state_dict(dicts['word_optimizer'])
             self.meta_optimizer.load_state_dict(dicts['meta_optimizer'])
 
-    def dev_eval(self, dev_data):
+    def dev_eval(self):
         pass
+        # TODO maybe use script supplied with data
 
     # TODO complete this
-    def algorithm_1(self, train_data, dev_data):
+    def algorithm_1(self, train_data):
         self.initialze()
         epochs = 10
 
@@ -224,7 +241,7 @@ class LSTMModel(nn.Module):
             meta_logits, meta_preds = self.run_meta_model(train_data)
             self.meta_optimizer.step()
 
-            f1 = self.dev_eval(dev_data)
+            f1 = self.dev_eval()
             if f1 > best_f1:
                 # implement this
                 self.lock_best_model()

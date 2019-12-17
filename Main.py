@@ -17,8 +17,10 @@ def test_complete_net():
         n_chars=labels.dictionary.n_chars(),
         n_words=labels.dictionary.n_words(),
         n_tags=len(labels.tags),
-        embedding_dim=embedding_dim
+        embedding_dim=embedding_dim,
+        cuda=False
     )
+
     model.run_training(
         sentences=sentences,
         epochs=10

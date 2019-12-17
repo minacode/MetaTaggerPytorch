@@ -113,7 +113,7 @@ class LabeledData:
     def from_language(cls, language, dataset='conll17'):
         try:
             data = cls.load(cls.language_path(dataset, language))
-            # print(f'Language file for {dataset}: {language} loaded.')
+            print(f'Language file for {dataset}: {language} loaded.')
             return data
         except FileNotFoundError:
             with open('data.json', 'r') as f:
@@ -125,7 +125,7 @@ class LabeledData:
                 language=language
             )
             data.update_from_file(path)
-            # print(f'Language file for {dataset}: {language} created.')
+            print(f'Language file for {dataset}: {language} created.')
             return data
 
     # make a loadfile out of this

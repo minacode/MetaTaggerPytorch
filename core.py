@@ -25,8 +25,8 @@ class WordLSTMCore(nn.Module):
         return self.hidden_size
 
     def initialise(self):
-        pass
-        # TODO ?
+        # TODO this is not documented in the paper
+        init.normal(self.linear.parameters())
 
     def forward(self, x):
         lstm_out, _ = self.bilstm(x)
