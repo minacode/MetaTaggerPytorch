@@ -1,31 +1,44 @@
 from build_dicts import load_converted_data
 from Dictionary import LabeledData
+import json
 import torch
 from LSTMModel import LSTMModel
 
 
 def test_complete_net():
-    labels = LabeledData.from_language('de')
-    sentences = load_converted_data(
-        language='de',
-        dataset='conll17'
-    )
+    dataset = 'conll17'
 
-    embedding_dim = 10
+    with open('data.json', 'r') as file:
+        data = json.load(file)
+    
+    for language in data[dataset]['languages']:
+        labels = LabeledData.from_language(language)
+        sentences = load_converted_data(
+            language=language,
+            dataset=dataset
+        )
 
-    model = LSTMModel(
-        n_chars=labels.dictionary.n_chars(),
-        n_words=labels.dictionary.n_words(),
-        n_tags=len(labels.tags),
-        embedding_dim=embedding_dim,
-        cuda=False
-    )
+        embedding_dim = 400
 
-    model.run_training(
-        sentences=sentences,
-        epochs=10
-    )
-    torch.save(model.get_state_dicts(), 'Models/1')
+        model = LSTMModel(
+            n_chars=labels.dictionary.n_chars(),
+            n_words=labels.dictionary.n_words(),
+            n_tags=len(labels.tags),
+            embedding_dim=embedding_dim,
+            cuda=True
+        )
+
+        model.run_training(
+            sentences=sentences,
+            epochs=20
+        )
+        torch.save(
+            model.get_state_dicts(
+                language=language,
+                dataset=dataset
+            ), 
+            f'Models/conll17/{language}'
+        )
 
 
 if __name__ == "__main__":

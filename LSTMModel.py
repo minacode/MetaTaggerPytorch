@@ -70,17 +70,30 @@ class LSTMModel(nn.Module):
         else:
             self.device = torch.device('cpu')
 
+        optimizer_args = {
+            'lr': 0.002,
+            'betas': (0.9, 0.999),
+            'eps': 1e-8,
+            'weight_decay': 0.999994
+        }
+
         self.char_optimizer = optim.Adam(
             list(self.char_embedding.parameters()) +
             list(self.char_core.parameters()) +
-            list(self.char_classifier.parameters()))
+            list(self.char_classifier.parameters()),
+            **optimizer_args
+        )
         self.word_optimizer = optim.Adam(
             list(self.word_embedding.parameters()) +
             list(self.word_core.parameters()) +
-            list(self.word_classifier.parameters()))
+            list(self.word_classifier.parameters()),
+            **optimizer_args
+        )
         self.meta_optimizer = optim.Adam(
             list(self.meta_core.parameters()) +
-            list(self.meta_classifier.parameters()))
+            list(self.meta_classifier.parameters()),
+            **optimizer_args
+        )
 
     def initialise(self):
         init.normal(self.char_embedding.parameters())
@@ -136,11 +149,11 @@ class LSTMModel(nn.Module):
         for i in range(epochs):
             shuffle(sentences)
             for sentence in sentences:
-                chars = torch.LongTensor(sentence['chars'], device=self.device)
-                words = torch.LongTensor(sentence['words'], device=self.device)
-                targets = torch.LongTensor(sentence['tags'], device=self.device)
-                firsts = torch.LongTensor(sentence['firsts'], device=self.device)
-                lasts = torch.LongTensor(sentence['lasts'], device=self.device)
+                chars = torch.LongTensor([sentence['chars']]).to(self.device)
+                words = torch.LongTensor([sentence['words']]).to(self.device)
+                targets = torch.LongTensor([sentence['tags']]).to(self.device)
+                firsts = torch.LongTensor([sentence['firsts']]).to(self.device)
+                lasts = torch.LongTensor([sentence['lasts']]).to(self.device)
 
                 if self.debug:
                     print('chars', chars, 'words', words, 'targets', targets, 'firsts', firsts, 'lasts', lasts, sep='\n')
@@ -200,23 +213,19 @@ class LSTMModel(nn.Module):
                 self.meta_optimizer.step()
                 steps += 1
 
-    def get_state_dicts(self):
+    def get_state_dicts(self, language, dataset):
         return {
             'model': self.state_dict(),
             'char_optimizer': self.char_optimizer.state_dict(),
             'word_optimizer': self.word_optimizer.state_dict(),
             'meta_optimizer': self.meta_optimizer.state_dict(),
-            'dictionary': self.dictionary,
-            'tags': self.tags,
-            'language': self.language
+            'language': language,
+            'dataset': dataset
         }
 
     # TODO write construction parameters, make static constructor from path
     def load_state_dicts(self, dicts, load_optimizers=True):
         self.load_state_dict(dicts['model'])
-        self.dictionary = dicts['dictionary']
-        self.tags = dicts['tags']
-        self.language = dicts['language']
         if load_optimizers:
             self.char_optimizer.load_state_dict(dicts['char_optimizer'])
             self.word_optimizer.load_state_dict(dicts['word_optimizer'])
