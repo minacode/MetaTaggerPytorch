@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, TypeVar, Union, Any, Literal
+from typing import List, Optional, Dict, TypeVar, Union, Any
 import json
 from conllu import parse
 from Savable import Savable
