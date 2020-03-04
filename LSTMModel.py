@@ -18,7 +18,7 @@ class BatchContainer:
 
 
 class LSTMModel(nn.Module):
-    def __init__(self, n_chars, n_words, n_tags, embedding_dim, debug=False, cuda=True):
+    def __init__(self, n_chars, n_words, n_tags, embedding_dim, cuda, debug=False):
         super(LSTMModel, self).__init__()
 
         self.debug = debug
@@ -38,7 +38,7 @@ class LSTMModel(nn.Module):
             n_lstm_layers=3,
             hidden_size=embedding_dim,
             dropout=0.33,
-            debug=False)
+            debug=debug)
         self.word_core = WordLSTMCore(
             input_size=embedding_dim,
             n_lstm_layers=3,
@@ -137,7 +137,7 @@ class LSTMModel(nn.Module):
             in self.predict(chars, words, firsts, lasts)
         ]
 
-    def run_training(self, sentences, epochs=10, path=None):
+    def run_training(self, sentences, tag_name, epochs=10, path=None):
         self.train()
 
         # load previous state if given
@@ -147,13 +147,13 @@ class LSTMModel(nn.Module):
 
         steps = 0
         for i in range(epochs):
-            shuffle(sentences)
+            # shuffle(sentences)
             for sentence in sentences:
-                chars = torch.LongTensor([sentence['chars']]).to(self.device)
-                words = torch.LongTensor([sentence['words']]).to(self.device)
-                targets = torch.LongTensor([sentence['tags']]).to(self.device)
-                firsts = torch.LongTensor([sentence['firsts']]).to(self.device)
-                lasts = torch.LongTensor([sentence['lasts']]).to(self.device)
+                chars = torch.LongTensor([sentence['char_ids']]).to(self.device)
+                words = torch.LongTensor([sentence['word_ids']]).to(self.device)
+                targets = torch.LongTensor([sentence['tag_ids'][tag_name]]).to(self.device)
+                firsts = torch.LongTensor([sentence['first_ids']]).to(self.device)
+                lasts = torch.LongTensor([sentence['last_ids']]).to(self.device)
 
                 if self.debug:
                     print('chars', chars, 'words', words, 'targets', targets, 'firsts', firsts, 'lasts', lasts, sep='\n')
