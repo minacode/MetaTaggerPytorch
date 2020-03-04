@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, TypeVar, TypedDict, Union, Any, Literal
+from typing import List, Optional, Dict, TypeVar, Union, Any, Literal
 import json
 from conllu import parse
 from Savable import Savable
@@ -36,7 +36,7 @@ def tag_name_to_column(tag_name):
     }[tag_name]
 
 
-class Sentence(TypedDict):
+class Sentence(dict):
     char_ids: List[int]
     word_ids: List[int]
     first_ids: List[int]
@@ -44,17 +44,17 @@ class Sentence(TypedDict):
     tag_ids: Dict[str, List[int]]
 
 
-class EnumeratorExport(TypedDict):
+class EnumeratorExport(dict):
     has_unknown: bool
     elements: List[str]
 
 
-class LexiconExport(TypedDict):
+class LexiconExport(dict):
     chars: EnumeratorExport
     words: EnumeratorExport
 
 
-class LabeledDataExport(TypedDict):
+class LabeledDataExport(dict):
     dataset: str
     language: str
     lexicon: LexiconExport
