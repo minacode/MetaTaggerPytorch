@@ -1,4 +1,4 @@
-from typing import List, Dict, Union, TypedDict, Literal, Any
+from typing import List, Dict, Union, Any
 
 from conllu import parse
 from Corpora.ud_test_v2_0_conll2017.evaluation_script.conll17_ud_eval import load_conllu_file
