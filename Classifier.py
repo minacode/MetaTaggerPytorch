@@ -22,3 +22,10 @@ class Classifier(nn.Module):
             print(f'post elu {x.size()}')
         return x
 
+    def log_tensorboard(self, writer, name, iteration_counter):
+        writer.add_histogram(
+            name + 'linear/grads',
+            self.linear.weight.grad,
+            iteration_counter
+        )
+

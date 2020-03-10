@@ -1,7 +1,7 @@
 from typing import List, Dict, Union, Any
 
 from conllu import parse
-from Corpora.ud_test_v2_0_conll2017.evaluation_script.conll17_ud_eval import load_conllu_file
+from Corpora.ud_test_v2_0_conll2017.evaluation_script.conll17_ud_eval import load_conllu_file, ID, FORM
 from Lexicon import LabeledData, get_labeled_data_path, Sentence, TAG_NAMES, tag_name_to_column
 import json
 import os.path
@@ -18,10 +18,6 @@ def new_sentence():
             for tag_name in TAG_NAMES
         }
     )
-
-
-ID = 0
-FORM = 1
 
 
 def get_converted_data_path(dataset, language):
@@ -80,9 +76,17 @@ def create_language_files(dataset: str, language: str, data: Dict[str, Any]) -> 
     char_pos: int = 0
     sentence: Sentence = new_sentence()
 
+    # n_sentences = 0
+
     for token in corpus.words:
         # check for start of new sentence
         if token.columns[ID] == '1':
+
+            # just for overfitting
+            # n_sentences += 1
+            # if n_sentences > 1:
+            #     break
+
             # TODO do not add sentence at first iteration, delete workaround lower
             sentence['char_ids'] = sentence['char_ids'][:-1]
             sentences.append(sentence)

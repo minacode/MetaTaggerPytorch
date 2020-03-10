@@ -8,6 +8,7 @@ class WordLSTMCore(nn.Module):
         super(WordLSTMCore, self).__init__()
 
         self.hidden_size = hidden_size
+        self.n_lstm_layers = n_lstm_layers
 
         self.bilstm = nn.LSTM(
             input_size=input_size,
@@ -26,12 +27,33 @@ class WordLSTMCore(nn.Module):
 
     def initialise(self):
         # TODO this is not documented in the paper
-        init.normal(self.linear.parameters())
+        # TODO initialise bilstm weights
+        init.normal_(self.linear.weight)
 
     def forward(self, x):
-        lstm_out, _ = self.bilstm(x)
+        lstm_out, _ = self.bilstm(
+            x.unsqueeze(dim=1)
+        )
+        lstm_out = lstm_out.squeeze(dim=1)
         x = self.linear(lstm_out)
         return x
+
+    def log_tensorboard(self, writer, name, iteration_counter):
+        for a in ['bias', 'weight']:
+            for b in ['ih', 'hh']:
+                for direction in ['', '_reverse']:
+                    for i in range(self.n_lstm_layers):
+                        writer.add_histogram(
+                            #  f'bilstm/{a}/{b}_{i}_{direction}/gradients',
+                            name + 'bilstm/combined_grads',
+                            getattr(self.bilstm, f'{a}_{b}_l{i}{direction}').grad,
+                            iteration_counter
+                        )
+        writer.add_histogram(
+            name + 'linear/grads',
+            self.linear.weight.grad,
+            iteration_counter
+        )
 
 
 class CharLSTMCore(nn.Module):
@@ -39,6 +61,7 @@ class CharLSTMCore(nn.Module):
         super(CharLSTMCore, self).__init__()
 
         self.hidden_size = hidden_size
+        self.n_lstm_layers = n_lstm_layers
 
         self.bilstm = nn.LSTM(
             input_size=input_size,
@@ -57,7 +80,8 @@ class CharLSTMCore(nn.Module):
         return self.hidden_size
 
     def initialise(self):
-        init.normal(self.linear.parameters())
+        # TODO init bilstm_weights
+        init.normal_(self.linear.weight)
 
     def forward(self, x, firsts, lasts):
         if self.debug:
@@ -69,15 +93,18 @@ class CharLSTMCore(nn.Module):
                 f'lasts {lasts.size()}\n'
                 # f'{lasts}'
             )
-        lstm_out, _ = self.bilstm(x)
+        lstm_out, _ = self.bilstm(
+            x.unsqueeze(dim=1)
+        )
+        lstm_out = lstm_out.squeeze(dim=1)
         if self.debug:
             print(
                 f'lstm_out {lstm_out.size()}\n'
                 # f'{lstm_out}'
             )
         catted = torch.cat(
-            [lstm_out[0, firsts], lstm_out[0, lasts]],
-            dim=2
+            [lstm_out[firsts], lstm_out[lasts]],
+            dim=1
         )
         if self.debug:
             print(
@@ -92,3 +119,20 @@ class CharLSTMCore(nn.Module):
                 # f'{x}'
             )
         return x
+
+    def log_tensorboard(self, writer, name, iteration_counter):
+        for a in ['bias', 'weight']:
+            for b in ['ih', 'hh']:
+                for direction in ['', '_reverse']:
+                    for i in range(self.n_lstm_layers):
+                        writer.add_histogram(
+                            #  f'bilstm/{a}/{b}_{i}_{direction}/gradients',
+                            name + 'bilstm/combined_grads',
+                            getattr(self.bilstm, f'{a}_{b}_l{i}{direction}').grad,
+                            iteration_counter
+                        )
+        writer.add_histogram(
+            name + 'linear/grads',
+            self.linear.weight.grad,
+            iteration_counter
+        )
