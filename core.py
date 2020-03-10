@@ -35,8 +35,12 @@ class WordLSTMCore(nn.Module):
             x.unsqueeze(dim=1)
         )
         lstm_out = lstm_out.squeeze(dim=1)
-        x = self.linear(lstm_out)
-        return x
+
+        # TODO residual instead of paper
+        lstm_out += torch.cat([x, x], dim=1)
+
+        linear_out = self.linear(lstm_out)
+        return linear_out
 
     def log_tensorboard(self, writer, name, iteration_counter):
         for a in ['bias', 'weight']:
@@ -102,6 +106,10 @@ class CharLSTMCore(nn.Module):
                 f'lstm_out {lstm_out.size()}\n'
                 # f'{lstm_out}'
             )
+
+        # TODO this is residual, other than paper
+        lstm_out += torch.cat([x, x], dim=1)
+
         catted = torch.cat(
             [lstm_out[firsts], lstm_out[lasts]],
             dim=1
@@ -112,13 +120,13 @@ class CharLSTMCore(nn.Module):
                 # f'{catted}'
             )
         # TODO this is definitely the wrong shape
-        x = self.linear(catted)
+        linear_out = self.linear(catted)
         if self.debug:
             print(
-                f'output {x.size()}\n'
+                f'output {linear_out.size()}\n'
                 # f'{x}'
             )
-        return x
+        return linear_out
 
     def log_tensorboard(self, writer, name, iteration_counter):
         for a in ['bias', 'weight']:

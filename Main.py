@@ -3,6 +3,7 @@ from Lexicon import LabeledData, get_labeled_data_path
 import json
 import torch
 from LSTMModel import LSTMModel
+from train import train
 
 
 def run_complete_net(debug=False):
@@ -42,11 +43,13 @@ def run_complete_net(debug=False):
         word_list = labels.lexicon._words.to_dict()['elements']
         # TODO rename blubb to unknown
         word_list_unk = ['blubb'] + word_list
-        model.run_training(
+
+        train(
+            model=model,
             sentences=sentences,
             epochs=epochs,
-            tag_name=tag_name,
             n_tags=n_tags,
+            tag_name=tag_name,
             word_list=word_list_unk
         )
 
