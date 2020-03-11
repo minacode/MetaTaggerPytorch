@@ -1,15 +1,10 @@
-from core import WordLSTMCore, CharLSTMCore
+from build_dicts import ID, FORM, tag_name_to_column
 from Classifier import Classifier
+from core import WordLSTMCore, CharLSTMCore
 from Corpora.ud_test_v2_0_conll2017.evaluation_script.conll17_ud_eval import evaluate, load_conllu_file
-from random import shuffle
 import torch
 import torch.nn as nn
 import torch.nn.init as init
-import torch.nn.functional as f
-from torch.nn.utils.rnn import pack_sequence
-import torch.optim as optim
-from build_dicts import ID, FORM, tag_name_to_column
-from tensorboardX import SummaryWriter
 
 
 class BatchContainer:
@@ -81,7 +76,7 @@ class LSTMModel(nn.Module):
         self.word_core.initialise()
         self.meta_core.initialise()
 
-    def forward(self, char_ids, word_ids, first_ids, last_ids):
+    def forward(self, inputs):
         '''
         char_embeddings = self.embedding_normalise(
             self.char_embedding_dropout(
@@ -94,6 +89,11 @@ class LSTMModel(nn.Module):
             )
         )
         '''
+        char_ids = inputs[0]
+        word_ids = inputs[1]
+        first_ids = inputs[2]
+        last_ids = inputs[3]
+
         char_embeddings = self.char_embedding_dropout(
             self.char_embedding(char_ids)
         )
@@ -216,12 +216,12 @@ class LSTMModel(nn.Module):
                     labeled_data.lexicon.get_word(token.columns[FORM])
                 )
 
-            _, _, probabilities = self.forward(
-                char_ids=torch.LongTensor(char_ids).to(self.device),
-                word_ids=torch.LongTensor(word_ids).to(self.device),
-                first_ids=torch.LongTensor(last_ids).to(self.device),
-                last_ids=torch.LongTensor(first_ids).to(self.device),
-            )
+            _, _, probabilities = self.forward([
+                torch.LongTensor(char_ids).to(self.device),
+                torch.LongTensor(word_ids).to(self.device),
+                torch.LongTensor(last_ids).to(self.device),
+                torch.LongTensor(first_ids).to(self.device),
+            ])
 
             # TODO zip Tensor? make this better
             for tag_id, token in zip(
@@ -241,13 +241,24 @@ class LSTMModel(nn.Module):
 
     def log_grads(self, writer, steps):
         writer.add_histogram(
-            'char_embedding_grads',
+            'grads/char_embedding',
             self.char_embedding.weight.grad,
             steps
         )
         writer.add_histogram(
-            'word_embedding_grads',
+            'grads/word_embedding',
             self.word_embedding.weight.grad,
+            steps
+        )
+
+        writer.add_histogram(
+            'weights/char_embedding',
+            self.char_embedding.weight,
+            steps
+        )
+        writer.add_histogram(
+            'weights/word_embedding',
+            self.word_embedding.weight,
             steps
         )
 
@@ -267,6 +278,7 @@ class LSTMModel(nn.Module):
             iteration_counter=steps
         )
 
+        '''
         self.char_classifier.log_tensorboard(
             writer=writer,
             name='char_classifier/',
@@ -275,6 +287,7 @@ class LSTMModel(nn.Module):
             writer=writer,
             name='word_classifier/',
             iteration_counter=steps)
+        '''
         self.meta_classifier.log_tensorboard(
             writer=writer,
             name='meta_classifier/',

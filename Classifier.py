@@ -24,7 +24,7 @@ class Classifier(nn.Module):
 
     def log_tensorboard(self, writer, name, iteration_counter):
         writer.add_histogram(
-            name + 'linear/grads',
+            f'grads/{name}/linear',
             self.linear.weight.grad,
             iteration_counter
         )

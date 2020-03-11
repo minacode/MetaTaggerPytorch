@@ -27,7 +27,7 @@ def run_complete_net(debug=False):
         )
 
         n_tags = len(labels.tags[tag_name])
-        embedding_dim = 3
+        embedding_dim = 20
 
         model = LSTMModel(
             n_chars=labels.lexicon.n_chars(),
@@ -45,6 +45,8 @@ def run_complete_net(debug=False):
         word_list_unk = ['blubb'] + word_list
 
         train(
+            dataset=dataset,
+            language=language,
             model=model,
             sentences=sentences,
             epochs=epochs,

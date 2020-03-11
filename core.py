@@ -49,12 +49,12 @@ class WordLSTMCore(nn.Module):
                     for i in range(self.n_lstm_layers):
                         writer.add_histogram(
                             #  f'bilstm/{a}/{b}_{i}_{direction}/gradients',
-                            name + 'bilstm/combined_grads',
+                            f'grads/{name}/bilstm_combined',
                             getattr(self.bilstm, f'{a}_{b}_l{i}{direction}').grad,
                             iteration_counter
                         )
         writer.add_histogram(
-            name + 'linear/grads',
+            f'grads/{name}/linear',
             self.linear.weight.grad,
             iteration_counter
         )
@@ -135,12 +135,12 @@ class CharLSTMCore(nn.Module):
                     for i in range(self.n_lstm_layers):
                         writer.add_histogram(
                             #  f'bilstm/{a}/{b}_{i}_{direction}/gradients',
-                            name + 'bilstm/combined_grads',
+                            f'grads/{name}/bilstm_combined',
                             getattr(self.bilstm, f'{a}_{b}_l{i}{direction}').grad,
                             iteration_counter
                         )
         writer.add_histogram(
-            name + 'linear/grads',
+            f'grads/{name}/linear',
             self.linear.weight.grad,
             iteration_counter
         )

@@ -11,9 +11,11 @@ def log_probabilities(writer, steps, probs):
         writer.add_histogram(f'probabilities/{name}', probs[name], steps)
 
 
-def log_losses(writer, steps, n_sentences, losses_out):
+def log_losses(writer, steps, n_sentences, one_loss, losses_out, combined_losses):
     for name in losses_out:
-        writer.add_scalar(f'losses/{name}', losses_out[name], steps)
+        writer.add_scalar(f'losses/one/{name}', one_loss[name], steps)
+        writer.add_scalar(f'losses/losses_out/{name}', losses_out[name], steps)
+        writer.add_scalar(f'losses/combined/{name}', combined_losses[name], steps)
     if not steps % 100:
         print(
             f'{steps}/{n_sentences}\t'
@@ -26,18 +28,20 @@ def log_losses(writer, steps, n_sentences, losses_out):
 def log_learning_rate(writer, steps, decays):
     for name, decay in decays.items():
         writer.add_scalar(
-            'name/lr',
+            f'lr/{name}',
             decay.get_lr(),
             steps
         )
 
 
-def log(writer, steps, model, n_sentences, losses_out, probs, word_list):
+def log(writer, steps, model, n_sentences, one_loss, losses_out, combined_losses, probs, word_list):
     log_losses(
         writer=writer,
         steps=steps,
         n_sentences=n_sentences,
-        losses_out=losses_out
+        one_loss=one_loss,
+        losses_out=losses_out,
+        combined_losses=combined_losses
     )
 
     if not steps % 10:
@@ -51,7 +55,7 @@ def log(writer, steps, model, n_sentences, losses_out, probs, word_list):
             steps=steps
         )
 
-    if not steps % 1000:
+    if False and not steps % 1000:
         model.log_embeddings(
             writer=writer,
             steps=steps,
@@ -60,9 +64,9 @@ def log(writer, steps, model, n_sentences, losses_out, probs, word_list):
 
 
 def get_losses():
-    char_loss = MSELoss(reduction='sum')
-    word_loss = MSELoss(reduction='sum')
-    meta_loss = MSELoss(reduction='sum')
+    char_loss = MSELoss(reduction='mean')
+    word_loss = MSELoss(reduction='mean')
+    meta_loss = MSELoss(reduction='mean')
     return {
         'char': char_loss,
         'word': word_loss,
@@ -73,7 +77,9 @@ def get_losses():
 def get_optimizers(model, optimizer_args):
     char_optimizer = Adam(model.get_char_params(), **optimizer_args)
     word_optimizer = Adam(model.get_word_params(), **optimizer_args)
-    meta_optimizer = Adam(model.get_meta_params(), **optimizer_args)
+
+    meta_params = model.get_meta_params() + model.get_char_params() + model.get_word_params()
+    meta_optimizer = Adam(meta_params, **optimizer_args)
     return {
         'char': char_optimizer,
         'word': word_optimizer,
@@ -109,7 +115,7 @@ def get_base_tensors(sentence, model, tag_name, n_tags):
 
 
 # TODO finish this
-def train(model, sentences, epochs, n_tags, tag_name, word_list):
+def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_list):
     losses = get_losses()
 
     optimizer_args = {
@@ -128,7 +134,7 @@ def train(model, sentences, epochs, n_tags, tag_name, word_list):
 
     # set model to train mode
     model.train()
-    writer = SummaryWriter()
+    writer = SummaryWriter(comment=f'{dataset}_{language}')
     n_sentences = len(sentences)
     steps = 0
 
@@ -148,12 +154,11 @@ def train(model, sentences, epochs, n_tags, tag_name, word_list):
                 n_tags=n_tags
             )
 
-            cp, wp, mp = model(
-                char_ids=chars,
-                word_ids=words,
-                first_ids=firsts,
-                last_ids=lasts
-            )
+            # TODO fix this. graph does not show, maybe input is wrong
+            # if not steps:
+            #     writer.add_graph(model=model, input_to_model=[chars, words, firsts, lasts])
+
+            cp, wp, mp = model([chars, words, firsts, lasts])
             probs = {
                 'char': cp,
                 'word': wp,
@@ -163,34 +168,44 @@ def train(model, sentences, epochs, n_tags, tag_name, word_list):
             # targets = targets.permute(1, 0)
 
             one_loss = {
-                name: (1 - probs[name].sum(dim=1)).sum(dim=0)
+                name: (1 - probs[name].sum(dim=1)).abs().sum(dim=0)
                 for name in losses
             }
 
             losses_out = {
-                name: losses[name](probs[name], targets) + one_loss[name]
+                name: losses[name](probs[name], targets)
                 for name in losses
             }
 
-            losses_out['char'].backward(retain_graph=True)
-            losses_out['word'].backward(retain_graph=True)
-            losses_out['meta'].backward()
+            combined_losses = {
+                name: losses_out[name] + one_loss[name]
+                for name in losses_out
+            }
+
+            # combined_losses['char'].backward(retain_graph=True)
+            # combined_losses['word'].backward(retain_graph=True)
+            combined_losses['meta'].backward()
 
             log(
                 writer=writer,
                 steps=steps,
                 model=model,
                 n_sentences=n_sentences,
+                one_loss=one_loss,
                 losses_out=losses_out,
+                combined_losses=combined_losses,
                 probs=probs,
                 word_list=word_list
             )
 
-            for optimizer in optimizers.values():
-                optimizer.step()
+            optimizers['meta'].step()
+            decays['meta'].step()
 
-            for decay in decays.values():
-                decay.step()
+            # for optimizer in optimizers.values():
+            #     optimizer.step()
+
+            # for decay in decays.values():
+            #     decay.step()
 
             steps += 1
 
