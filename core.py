@@ -38,9 +38,9 @@ class WordLSTMCore(nn.Module):
         lstm_out = lstm_out.squeeze(dim=1)
 
         # TODO residual instead of paper
-        lstm_out += torch.cat([x, x], dim=1)
+        residual_out = lstm_out + torch.cat([x, x], dim=1)
 
-        linear_out = self.linear(lstm_out)
+        linear_out = self.linear(residual_out)
         return linear_out
 
     def log_tensorboard(self, writer, name, iteration_counter):
@@ -110,10 +110,10 @@ class CharLSTMCore(nn.Module):
             )
 
         # TODO this is residual, other than paper
-        lstm_out += torch.cat([x, x], dim=1)
+        residual_out = lstm_out + torch.cat([x, x], dim=1)
 
         catted = torch.cat(
-            [lstm_out[firsts], lstm_out[lasts]],
+            [residual_out[firsts], residual_out[lasts]],
             dim=1
         )
         if self.debug:
