@@ -242,23 +242,23 @@ class LSTMModel(nn.Module):
     def log_grads(self, writer, steps):
         writer.add_histogram(
             'grads/char_embedding',
-            self.char_embedding.weight.grad,
+            (self.char_embedding.weight.grad.abs() + 1e-8).log(),
             steps
         )
         writer.add_histogram(
             'grads/word_embedding',
-            self.word_embedding.weight.grad,
+            (self.word_embedding.weight.grad.abs() + 1e-8).log(),
             steps
         )
 
         writer.add_histogram(
             'weights/char_embedding',
-            self.char_embedding.weight,
+            (self.char_embedding.weight.abs() + 1e-8).log(),
             steps
         )
         writer.add_histogram(
             'weights/word_embedding',
-            self.word_embedding.weight,
+            (self.word_embedding.weight.abs() + 1e-8).log(),
             steps
         )
 
@@ -278,7 +278,6 @@ class LSTMModel(nn.Module):
             iteration_counter=steps
         )
 
-        '''
         self.char_classifier.log_tensorboard(
             writer=writer,
             name='char_classifier/',
@@ -287,19 +286,24 @@ class LSTMModel(nn.Module):
             writer=writer,
             name='word_classifier/',
             iteration_counter=steps)
-        '''
         self.meta_classifier.log_tensorboard(
             writer=writer,
             name='meta_classifier/',
             iteration_counter=steps)
 
-    def log_embeddings(self, writer, steps, word_list):
+    def log_embeddings(self, writer, steps, word_list, char_list):
         print('save embeddings')
         writer.add_embedding(
             self.word_embedding.weight,
             global_step=steps,
             tag=f'word_embeddings{steps}',
             metadata=word_list
+        )
+        writer.add_embedding(
+            self.char_embedding.weight,
+            global_step=steps,
+            tag=f'char_embeddings{steps}',
+            metadata=char_list
         )
 
     # TODO complete this

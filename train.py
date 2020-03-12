@@ -1,7 +1,7 @@
 from random import shuffle
 from tensorboardX import SummaryWriter
 from torch import LongTensor, Tensor
-from torch.nn import MSELoss
+from torch.nn import MSELoss, CrossEntropyLoss
 from torch.optim import Adam
 from torch.optim.lr_scheduler import ExponentialLR
 
@@ -34,7 +34,7 @@ def log_learning_rate(writer, steps, decays):
         )
 
 
-def log(writer, steps, model, n_sentences, one_loss, losses_out, combined_losses, probs, word_list):
+def log(writer, steps, model, n_sentences, one_loss, losses_out, combined_losses, probs, word_list, char_list):
     log_losses(
         writer=writer,
         steps=steps,
@@ -55,18 +55,26 @@ def log(writer, steps, model, n_sentences, one_loss, losses_out, combined_losses
             steps=steps
         )
 
-    if False and not steps % 1000:
+    if not steps % 1000:
         model.log_embeddings(
             writer=writer,
             steps=steps,
-            word_list=word_list
+            word_list=word_list,
+            char_list=char_list
         )
 
 
-def get_losses():
-    char_loss = MSELoss(reduction='mean')
-    word_loss = MSELoss(reduction='mean')
-    meta_loss = MSELoss(reduction='mean')
+def get_losses(loss_mode):
+    if loss_mode == 'mse':
+        char_loss = MSELoss(reduction='mean')
+        word_loss = MSELoss(reduction='mean')
+        meta_loss = MSELoss(reduction='mean')
+    elif loss_mode == 'ce':
+        char_loss = CrossEntropyLoss()
+        word_loss = CrossEntropyLoss()
+        meta_loss = CrossEntropyLoss()
+    else:
+        raise Exception(f'invalid loss instantiation: {loss_mode}')
     return {
         'char': char_loss,
         'word': word_loss,
@@ -97,26 +105,32 @@ def get_decays(gamma, optimizers):
     }
 
 
-def get_base_tensors(sentence, model, tag_name, n_tags):
+def get_base_tensors(sentence, model, tag_name, n_tags, loss_mode):
     # set base tensors
     chars = LongTensor(sentence['char_ids']).to(model.device)
     words = LongTensor(sentence['word_ids']).to(model.device)
     # targets = torch.LongTensor(sentence['tag_ids'][tag_name]).to(self.device)
-    targets = [
-        [0 for _ in range(n_tags)]
-        for _ in range(len(sentence['tag_ids'][tag_name]))
-    ]
-    for n_tag, tag_id in enumerate(sentence['tag_ids'][tag_name]):
-        targets[n_tag][tag_id] = 1
-    targets = Tensor(targets).to(model.device)
+    if loss_mode == 'mse':
+        targets = [
+            [0 for _ in range(n_tags)]
+            for _ in range(len(sentence['tag_ids'][tag_name]))
+        ]
+        for n_tag, tag_id in enumerate(sentence['tag_ids'][tag_name]):
+            targets[n_tag][tag_id] = 1
+        targets = Tensor(targets).to(model.device)
+    elif loss_mode == 'ce':
+        targets = LongTensor(sentence['tag_ids'][tag_name]).to(model.device)
+    else:
+        raise Exception(f'invalid loss mode while creating base tensors: {loss_mode}')
     firsts = LongTensor(sentence['first_ids']).to(model.device)
     lasts = LongTensor(sentence['last_ids']).to(model.device)
     return chars, words, targets, firsts, lasts
 
 
 # TODO finish this
-def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_list):
-    losses = get_losses()
+def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_list, char_list):
+    loss_mode = 'ce'
+    losses = get_losses(loss_mode=loss_mode)
 
     optimizer_args = {
         'lr': 0.002,  # TODO test other values
@@ -134,7 +148,7 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
 
     # set model to train mode
     model.train()
-    writer = SummaryWriter(comment=f'{dataset}_{language}')
+    writer = SummaryWriter(comment=f'_{dataset}_{language}')
     n_sentences = len(sentences)
     steps = 0
 
@@ -151,7 +165,8 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
                 sentence=sentence,
                 model=model,
                 tag_name=tag_name,
-                n_tags=n_tags
+                n_tags=n_tags,
+                loss_mode=loss_mode
             )
 
             # TODO fix this. graph does not show, maybe input is wrong
@@ -182,8 +197,8 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
                 for name in losses_out
             }
 
-            # combined_losses['char'].backward(retain_graph=True)
-            # combined_losses['word'].backward(retain_graph=True)
+            combined_losses['char'].backward(retain_graph=True)
+            combined_losses['word'].backward(retain_graph=True)
             combined_losses['meta'].backward()
 
             log(
@@ -195,14 +210,12 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
                 losses_out=losses_out,
                 combined_losses=combined_losses,
                 probs=probs,
-                word_list=word_list
+                word_list=word_list,
+                char_list=char_list
             )
 
-            optimizers['meta'].step()
-            decays['meta'].step()
-
-            # for optimizer in optimizers.values():
-            #     optimizer.step()
+            for optimizer in optimizers.values():
+                optimizer.step()
 
             # for decay in decays.values():
             #     decay.step()
