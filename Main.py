@@ -1,4 +1,4 @@
-from build_dicts import load_converted_data
+from build_dicts import load_converted_data, convert_data
 from Lexicon import LabeledData, get_labeled_data_path
 import json
 import torch
@@ -55,6 +55,8 @@ def run_complete_net(debug=False):
             char_list_unk.append(
                 unicodedata.name(char)
             )
+
+        torch.autograd.set_detect_anomaly(True)
 
         train(
             dataset=dataset,

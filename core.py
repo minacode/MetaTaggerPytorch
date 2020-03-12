@@ -31,8 +31,9 @@ class WordLSTMCore(nn.Module):
         init.normal_(self.linear.weight)
 
     def forward(self, x):
+        unsqueezed_x = torch.unsqueeze(x, dim=1)
         lstm_out, _ = self.bilstm(
-            x.unsqueeze(dim=1)
+            unsqueezed_x
         )
         lstm_out = lstm_out.squeeze(dim=1)
 
@@ -97,8 +98,9 @@ class CharLSTMCore(nn.Module):
                 f'lasts {lasts.size()}\n'
                 # f'{lasts}'
             )
+        unsqueezed_x = torch.unsqueeze(x, dim=1)
         lstm_out, _ = self.bilstm(
-            x.unsqueeze(dim=1)
+            unsqueezed_x
         )
         lstm_out = lstm_out.squeeze(dim=1)
         if self.debug:
