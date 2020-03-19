@@ -2,36 +2,9 @@ from random import shuffle
 from tensorboardX import SummaryWriter
 from torch import LongTensor, Tensor
 from torch.nn import MSELoss, CrossEntropyLoss
-from torch.optim import Adam
-from torch.optim.lr_scheduler import ExponentialLR
-
-
-def log_probabilities(writer, steps, probs):
-    for name, prob in probs.items():
-        writer.add_histogram(f'probabilities/{name}', probs[name], steps)
-
-
-def log_losses(writer, steps, n_sentences, one_loss, losses_out, combined_losses):
-    for name in losses_out:
-        writer.add_scalar(f'losses/one/{name}', one_loss[name], steps)
-        writer.add_scalar(f'losses/losses_out/{name}', losses_out[name], steps)
-        writer.add_scalar(f'losses/combined/{name}', combined_losses[name], steps)
-    if not steps % 100:
-        print(
-            f'{steps}/{n_sentences}\t'
-            f'{losses_out["char"].item()}\t'
-            f'{losses_out["word"].item()}\t'
-            f'{losses_out["meta"].item()}'
-        )
-
-
-def log_learning_rate(writer, steps, decays):
-    for name, decay in decays.items():
-        writer.add_scalar(
-            f'lr/{name}',
-            decay.get_lr(),
-            steps
-        )
+from torch.optim import Adam, SGD
+from torch.optim.sparse_adam import  SparseAdam
+from tensorboard_logging import log_losses, log_probabilities
 
 
 def log(writer, steps, model, n_sentences, one_loss, losses_out, combined_losses, probs, word_list, char_list):
@@ -49,10 +22,6 @@ def log(writer, steps, model, n_sentences, one_loss, losses_out, combined_losses
             writer=writer,
             steps=steps,
             probs=probs
-        )
-        model.log_grads(
-            writer=writer,
-            steps=steps
         )
 
     if not steps % 1000:
@@ -82,26 +51,32 @@ def get_losses(loss_mode):
     }
 
 
-def get_optimizers(model, optimizer_args):
-    char_optimizer = Adam(model.get_char_params(), **optimizer_args)
-    word_optimizer = Adam(model.get_word_params(), **optimizer_args)
+def get_optimizers(model, optimizer_type, optimizer_args):
+    if optimizer_type == 'adam':
+        cls = Adam
+        parameters = ['lr', 'betas', 'eps', 'weight_decay', 'amsgrad']
+    elif optimizer_type == 'sparse_adam':
+        cls = SparseAdam
+        parameters = ['lr', 'betas', 'eps']
+    elif optimizer_type == 'sgd':
+        cls = SGD
+        parameters = ['lr']
+    else:
+        raise Exception(f'unknown optimizer type: {optimizer_type}')
 
-    meta_params = model.get_meta_params() + model.get_char_params() + model.get_word_params()
-    meta_optimizer = Adam(meta_params, **optimizer_args)
+    filtered_args = {
+        arg: optimizer_args[arg]
+        for arg in optimizer_args
+        if arg in parameters
+    }
+
+    char_optimizer = cls(model.get_char_params(), **filtered_args)
+    word_optimizer = cls(model.get_word_params(), **filtered_args)
+    meta_optimizer = cls(model.get_meta_params(), **filtered_args)
     return {
         'char': char_optimizer,
         'word': word_optimizer,
         'meta': meta_optimizer
-    }
-
-
-def get_decays(gamma, optimizers):
-    return {
-        name: ExponentialLR(
-            optimizer=optimizers[name],
-            gamma=gamma
-        )
-        for name in optimizers
     }
 
 
@@ -127,10 +102,81 @@ def get_base_tensors(sentence, model, tag_name, n_tags, loss_mode):
     return chars, words, targets, firsts, lasts
 
 
+def evaluate_probs(probs, targets, loss_mode, writer, steps):
+    if loss_mode == 'ce':
+        target_predictions = targets
+    elif loss_mode == 'mse':
+        target_predictions = targets.argmax(dim=1)
+    else:
+        raise Exception(f'unknown loss mode: {loss_mode}')
+
+    for a, b in zip(
+            probs['meta'].argmax(dim=1),
+            target_predictions
+    ):
+        print(f'{a} {b}', end='|')
+    print()
+
+    predictions = {
+        name: probs[name].argmax(dim=1)
+        for name in probs
+    }
+
+    wrongs = {
+        name: 0
+        for name in predictions
+    }
+    for name in predictions:
+        for i in range(len(predictions[name])):
+            if predictions[name][i] != target_predictions[i]:
+                wrongs[name] += 1
+    # normalise wrongs from 0 to 1
+    # 0.. all words wrong labeled
+    # 1.. all words correct labeled
+    wrongs = {
+        name: wrongs[name] / len(target_predictions)
+        for name in wrongs
+    }
+
+    print(wrongs)
+    for name in wrongs:
+        writer.add_scalar(f'wrongs/{name}', wrongs[name], steps)
+
+    # print(model.word_core.linear.weight.round())
+    # print(model.word_core.linear.bias.round())
+
+
+def get_losses_for_training(probs, targets, losses, train_by):
+    one_loss = {
+        name: (1 - probs[name].sum(dim=1)).abs().sum(dim=0)
+        for name in losses
+    }
+    losses_out = {
+        name: losses[name](probs[name], targets)
+        for name in losses
+    }
+    combined_losses = {
+        name: losses_out[name] + one_loss[name]
+        for name in losses_out
+    }
+
+    if train_by == 'combined':
+        losses_for_training = combined_losses
+    elif train_by == 'out':
+        losses_for_training = losses_out
+    elif train_by == 'one':
+        losses_for_training = one_loss
+    else:
+        raise Exception(f'unknown training mode: {train_by}')
+
+    return losses_for_training, one_loss, losses_out, combined_losses
+
+
 # TODO finish this
 def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_list, char_list):
     loss_mode = 'ce'
-    losses = get_losses(loss_mode=loss_mode)
+    train_by = 'out'
+    optimizer_type = 'sgd'
 
     optimizer_args = {
         'lr': 0.002,  # TODO test other values
@@ -138,29 +184,24 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
         'eps': 1e-8,
         'weight_decay': 0.999994
     }
-    optimizers = get_optimizers(model, optimizer_args)
 
-    gamma = 0.999
-    decays = get_decays(
-        gamma=gamma,
-        optimizers=optimizers
-    )
+    losses = get_losses(loss_mode=loss_mode)
 
-    # set model to train mode
+    optimizers = get_optimizers(model, optimizer_type, optimizer_args)
+    for optimizer in optimizers.values():
+        optimizer.zero_grad()
+
     model.train()
+
     writer = SummaryWriter(comment=f'_{dataset}_{language}')
+
     n_sentences = len(sentences)
     steps = 0
 
     for n_epoch in range(epochs):
-        print(f'starting epoch {n_epoch}')
+        # print(f'starting epoch {n_epoch}')
         shuffle(sentences)
         for sentence in sentences:
-
-            # reset gradients
-            for optimizer in optimizers.values():
-                optimizer.zero_grad()
-
             chars, words, targets, firsts, lasts = get_base_tensors(
                 sentence=sentence,
                 model=model,
@@ -169,10 +210,6 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
                 loss_mode=loss_mode
             )
 
-            # TODO fix this. graph does not show, maybe input is wrong
-            # if not steps:
-            #     writer.add_graph(model=model, input_to_model=[chars, words, firsts, lasts])
-
             cp, wp, mp = model([chars, words, firsts, lasts])
             probs = {
                 'char': cp,
@@ -180,26 +217,48 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
                 'meta': mp
             }
 
-            # targets = targets.permute(1, 0)
+            if not steps % 100:
+                evaluate_probs(
+                    probs=probs,
+                    targets=targets,
+                    loss_mode=loss_mode,
+                    writer=writer,
+                    steps=steps
+                )
 
-            one_loss = {
-                name: (1 - probs[name].sum(dim=1)).abs().sum(dim=0)
-                for name in losses
-            }
+            losses_for_training, one_loss, losses_out, combined_losses = get_losses_for_training(
+                probs=probs,
+                targets=targets,
+                losses=losses,
+                train_by=train_by
+            )
 
-            losses_out = {
-                name: losses[name](probs[name], targets)
-                for name in losses
-            }
+            losses_for_training['char'].backward(retain_graph=True)
+            if not steps % 10:
+                model.log_char_net(
+                    writer=writer,
+                    steps=steps
+                )
+            optimizers['char'].step()
+            optimizers['char'].zero_grad()
 
-            combined_losses = {
-                name: losses_out[name] + one_loss[name]
-                for name in losses_out
-            }
+            losses_for_training['word'].backward(retain_graph=True)
+            if not steps % 10:
+                model.log_char_net(
+                    writer=writer,
+                    steps=steps
+                )
+            optimizers['word'].step()
+            optimizers['word'].zero_grad()
 
-            combined_losses['char'].backward(retain_graph=True)
-            combined_losses['word'].backward(retain_graph=True)
-            combined_losses['meta'].backward()
+            losses_for_training['meta'].backward()
+            if not steps % 10:
+                model.log_char_net(
+                    writer=writer,
+                    steps=steps
+                )
+            optimizers['meta'].step()
+            optimizers['meta'].zero_grad()
 
             log(
                 writer=writer,
@@ -211,14 +270,11 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
                 combined_losses=combined_losses,
                 probs=probs,
                 word_list=word_list,
-                char_list=char_list
+                char_list=char_list,
             )
 
             for optimizer in optimizers.values():
-                optimizer.step()
-
-            # for decay in decays.values():
-            #     decay.step()
+                optimizer.zero_grad()
 
             steps += 1
 

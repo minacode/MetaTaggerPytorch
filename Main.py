@@ -3,14 +3,16 @@ from Lexicon import LabeledData, get_labeled_data_path
 import json
 import torch
 from LSTMModel import LSTMModel
+from time import asctime
 from train import train
 import unicodedata
+from itertools import chain
 
 
 def run_complete_net(debug=False):
     dataset = 'conll17'
     tag_name = 'POS'
-    epochs = 1
+    epochs = 10
 
     with open('data.json', 'r') as file:
         data = json.load(file)
@@ -28,16 +30,27 @@ def run_complete_net(debug=False):
         )
 
         n_tags = len(labels.tags[tag_name])
-        embedding_dim = 10
+        # TODO hack
+        embedding_dim = 50
 
         model = LSTMModel(
             n_chars=labels.lexicon.n_chars(),
             n_words=labels.lexicon.n_words(),
             n_tags=n_tags,
             embedding_dim=embedding_dim,
-            cuda=False,
-            debug=debug
+            cuda=True,
+            debug=debug,
+            residual=True
         )
+
+        # check if the functions handle every parameter
+        model_parameters = set(model.parameters())
+        single_parameters = set(chain(
+            model.get_char_params(),
+            model.get_word_params(),
+            model.get_meta_params()
+        ))
+        assert model_parameters == single_parameters
 
         model.initialise()
 
@@ -70,19 +83,22 @@ def run_complete_net(debug=False):
             char_list=char_list_unk
         )
 
+        timestamp = asctime().replace(' ', '_')
+        torch.save(model, f'Models/{dataset}/{language}_{timestamp}')
+
         print('training finished, starting evaluation')
 
-        scores = model.dev_eval(
-            tag_name=tag_name,
-            path='Corpora/ud_test_v2_0_conll2017/gold/conll17-ud-test-2017-05-09/de.conllu',
-            labeled_data=labels
-        )
-
-        for category in scores:
-            print(category)
-            print(scores[category].precision)
-            print(scores[category].recall)
-            print(scores[category].f1)
+        if False:
+            scores = model.dev_eval(
+                tag_name=tag_name,
+                path='Corpora/ud_test_v2_0_conll2017/gold/conll17-ud-test-2017-05-09/de.conllu',
+                labeled_data=labels
+            )
+            for category in scores:
+                print(category)
+                print(scores[category].precision)
+                print(scores[category].recall)
+                print(scores[category].f1)
 
         # TODO save is broken, optimizers no longer in lstm-model
         '''

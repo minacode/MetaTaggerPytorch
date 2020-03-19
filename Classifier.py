@@ -1,4 +1,5 @@
 import torch.nn as nn
+from tensorboard_logging import log_log_histogram
 
 
 class Classifier(nn.Module):
@@ -23,9 +24,16 @@ class Classifier(nn.Module):
         return x
 
     def log_tensorboard(self, writer, name, iteration_counter):
-        writer.add_histogram(
-            f'grads/{name}linear',
-            (self.linear.weight.grad.abs() + 1e-8).log(),
-            iteration_counter
+        log_log_histogram(
+            writer=writer,
+            steps=iteration_counter,
+            name=f'grads/{name}linear',
+            tensor=self.linear.weight.grad
+        )
+        log_log_histogram(
+            writer=writer,
+            steps=iteration_counter,
+            name=f'weights/{name}linear',
+            tensor=self.linear.weight
         )
 
