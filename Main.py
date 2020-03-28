@@ -11,8 +11,8 @@ from itertools import chain
 
 def run_complete_net(debug=False):
     dataset = 'conll17'
-    tag_name = 'POS'
-    epochs = 10
+    tag_name = 'XPOS'
+    epochs = 50
 
     with open('data.json', 'r') as file:
         data = json.load(file)
@@ -31,7 +31,7 @@ def run_complete_net(debug=False):
 
         n_tags = len(labels.tags[tag_name])
         # TODO hack
-        embedding_dim = 50
+        embedding_dim = 400
 
         model = LSTMModel(
             n_chars=labels.lexicon.n_chars(),
@@ -40,7 +40,7 @@ def run_complete_net(debug=False):
             embedding_dim=embedding_dim,
             cuda=True,
             debug=debug,
-            residual=True
+            residual=False
         )
 
         # check if the functions handle every parameter

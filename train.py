@@ -1,6 +1,6 @@
 from random import shuffle
 from tensorboardX import SummaryWriter
-from torch import LongTensor, Tensor
+from torch import tensor, long
 from torch.nn import MSELoss, CrossEntropyLoss
 from torch.optim import Adam, SGD
 from torch.optim.sparse_adam import  SparseAdam
@@ -8,6 +8,8 @@ from tensorboard_logging import log_losses, log_probabilities
 
 
 def log(writer, steps, model, n_sentences, one_loss, losses_out, combined_losses, probs, word_list, char_list):
+    if steps % 10:
+        return
     log_losses(
         writer=writer,
         steps=steps,
@@ -82,8 +84,8 @@ def get_optimizers(model, optimizer_type, optimizer_args):
 
 def get_base_tensors(sentence, model, tag_name, n_tags, loss_mode):
     # set base tensors
-    chars = LongTensor(sentence['char_ids']).to(model.device)
-    words = LongTensor(sentence['word_ids']).to(model.device)
+    chars = tensor(data=sentence['char_ids'], dtype=long, device=model.device)
+    words = tensor(sentence['word_ids'], dtype=long, device=model.device)
     # targets = torch.LongTensor(sentence['tag_ids'][tag_name]).to(self.device)
     if loss_mode == 'mse':
         targets = [
@@ -92,13 +94,13 @@ def get_base_tensors(sentence, model, tag_name, n_tags, loss_mode):
         ]
         for n_tag, tag_id in enumerate(sentence['tag_ids'][tag_name]):
             targets[n_tag][tag_id] = 1
-        targets = Tensor(targets).to(model.device)
+        targets = tensor(data=targets, device=model.device)
     elif loss_mode == 'ce':
-        targets = LongTensor(sentence['tag_ids'][tag_name]).to(model.device)
+        targets = tensor(data=sentence['tag_ids'][tag_name], dtype=long, device=model.device)
     else:
         raise Exception(f'invalid loss mode while creating base tensors: {loss_mode}')
-    firsts = LongTensor(sentence['first_ids']).to(model.device)
-    lasts = LongTensor(sentence['last_ids']).to(model.device)
+    firsts = tensor(data=sentence['first_ids'], dtype=long, device=model.device)
+    lasts = tensor(data=sentence['last_ids'], dtype=long, device=model.device)
     return chars, words, targets, firsts, lasts
 
 

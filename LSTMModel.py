@@ -43,24 +43,24 @@ class LSTMModel(nn.Module):
 
         self.char_core = CharLSTMCore(
             input_size=embedding_dim,
-            n_lstm_layers=1,
+            n_lstm_layers=3,
             hidden_size=embedding_dim,
-            dropout=0.1,  # 0.33,
+            dropout=0.05,  # 0.33,
             debug=debug,
             residual=residual
         )
         self.word_core = WordLSTMCore(
             input_size=embedding_dim,
-            n_lstm_layers=1,
+            n_lstm_layers=3,
             hidden_size=embedding_dim,
-            dropout=0.1,  # 0.33
+            dropout=0.05,  # 0.33,
             residual=residual
         )
         self.meta_core = WordLSTMCore(
             input_size=embedding_dim * 2,
             n_lstm_layers=1,
             hidden_size=embedding_dim * 2,
-            dropout=0.1,  # 0.33
+            dropout=0.05,  # 0.33,
             residual=residual
         )
 
@@ -150,10 +150,10 @@ class LSTMModel(nn.Module):
             firsts.append(i)
             i + len(word)
             lasts.append(i-1)
-        chars = torch.LongTensor([chars[:-1]])
-        words = torch.LongTensor([words])
-        firsts = torch.LongTensor(firsts)
-        lasts = torch.LongTensor(lasts)
+        chars = torch.tensor([chars[:-1]], dtype=torch.long, device=self.device)
+        words = torch.tensor([words], dtype=torch.long, device=self.device)
+        firsts = torch.tensor(firsts, dtype=torch.long, device=self.device)
+        lasts = torch.tensor(lasts, dtype=torch.long, device=self.device)
         return [
             self.tags.get_value(index=tag_index)
             for tag_index
@@ -242,10 +242,10 @@ class LSTMModel(nn.Module):
                 )
 
             _, _, probabilities = self.forward([
-                torch.LongTensor(char_ids).to(self.device),
-                torch.LongTensor(word_ids).to(self.device),
-                torch.LongTensor(last_ids).to(self.device),
-                torch.LongTensor(first_ids).to(self.device),
+                torch.tensor(char_ids, dtype=torch.long, device=self.device),
+                torch.tensor(word_ids, dtype=torch.long, device=self.device),
+                torch.tensor(last_ids, dtype=torch.long, device=self.device),
+                torch.tensor(first_ids, dtype=torch.long, device=self.device),
             ])
 
             # TODO zip Tensor? make this better
