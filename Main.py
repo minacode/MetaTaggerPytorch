@@ -69,5 +69,5 @@ def run_complete_net(debug=False):
 
 
 if __name__ == "__main__":
-    # convert_data()
+    convert_data()
     run_complete_net(debug=False)

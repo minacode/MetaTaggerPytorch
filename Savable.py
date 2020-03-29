@@ -1,5 +1,5 @@
 import json
-from abc import ABCMeta, abstractmethod, abstractclassmethod
+from abc import ABCMeta, abstractmethod
 
 
 class Savable(metaclass=ABCMeta):

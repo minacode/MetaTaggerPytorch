@@ -46,7 +46,7 @@ def evaluate_model(model, tag_name, path, labeled_data):
                 labeled_data.lexicon.get_word(token.columns[FORM])
             )
 
-        _, _, probabilities = model([
+        probabilities = model([
             torch.tensor(char_ids, dtype=torch.long, device=model.device),
             torch.tensor(word_ids, dtype=torch.long, device=model.device),
             torch.tensor(last_ids, dtype=torch.long, device=model.device),

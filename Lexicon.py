@@ -1,10 +1,5 @@
-from typing import List, Optional, Dict, TypeVar, Union, Any
-import json
-from conllu import parse
+from typing import List, Optional, Dict, Union, Any
 from Savable import Savable
-
-
-T = TypeVar('T')
 
 
 class Singleton(type):
@@ -169,12 +164,6 @@ class Lexicon:
     def get_char_by_id(self, i: int) -> Union[Unknown, str]:
         return self._chars.get_value(i)
 
-    def get_chars(self, word: str) -> List[int]:
-        return [
-            self._chars[char]
-            for char in word
-        ]
-
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Lexicon):
             return False
@@ -213,21 +202,6 @@ class LabeledData(Savable):
         ])
 
     @classmethod
-    def create_from_language(cls, language: str, dataset: str = 'conll17'):
-        with open('data.json', 'r') as f:
-            config = json.load(f)
-        c = config[dataset]
-        path = f'{c["base_path"]}/{c["train"]}/{c["file_name"].replace("<lang>", language)}'
-        data = cls(
-            dataset=dataset,
-            language=language,
-            labels=TAG_NAMES
-        )
-        data.update_from_file(path)
-        print(f'Language file for {dataset}: {language} created.')
-        return data
-
-    @classmethod
     def from_dict(cls, data):
         return cls(
             dataset=data['dataset'],
@@ -251,23 +225,6 @@ class LabeledData(Savable):
                 in self.tags
             }
         )
-
-    # make a loadfile out of this
-    def update_from_file(self, path: str) -> None:
-        with open(path, 'r') as file:
-            lines = file.read()
-        # TODO kill it with fire!!!1k!!1¹!
-        sentences = parse(lines)
-        for sentence in sentences:
-            for token in sentence:
-                self.lexicon.add_word(token['form'])
-                # TODO add features. parser does not find them?
-                for label in self.labels:
-                    if label not in self.tags:
-                        self.tags[label] = Enumerator()
-                    # TODO maybe handle that some values are labeled with None
-                    # the UnknownEnumerator checks whether a collision with logical "unknown" happens via .add
-                    self.tags[label].add(token[label])
 
     def get_n_tags(self, tag_name: str) -> int:
         if tag_name in self.tags:

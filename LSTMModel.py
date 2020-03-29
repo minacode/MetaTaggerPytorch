@@ -4,7 +4,6 @@ from itertools import chain
 import torch
 import torch.nn as nn
 import torch.nn.init as init
-from tensorboard_logging import log_log_histogram
 
 
 class LSTMModel(nn.Module):
@@ -78,76 +77,57 @@ class LSTMModel(nn.Module):
         self.word_core.initialise()
         self.meta_core.initialise()
 
-    def forward(self, inputs):
-        '''
-        char_embeddings = self.embedding_normalise(
-            self.char_embedding_dropout(
-                self.char_embedding(char_ids)
-            )
-        )
-        word_embeddings = self.embedding_normalise(
-            self.word_embedding_dropout(
-                self.word_embedding(word_ids)
-            )
-        )
-        '''
-        # TODO id dropout sets some words to 'unknown'; further, the embedding for 'unknown' is used and trained
-        # char_ids = self.char_id_dropout(inputs[0])
-        # word_ids = self.word_id_dropout(inputs[1])
+    def forward_char_net(self, inputs):
+        ids, first_ids, last_ids = inputs
+        embeddings = self.char_embedding(ids)
+        dropout_embeddings = self.char_embedding_dropout(embeddings)
+        core_out = self.char_core(dropout_embeddings, first_ids, last_ids)
+        return core_out
 
-        char_ids = inputs[0]
-        word_ids = inputs[1]
+    def forward_word_net(self, ids):
+        embeddings = self.word_embedding(ids)
+        dropout_embeddings = self.word_embedding_dropout(embeddings)
+        core_out = self.word_core(dropout_embeddings)
+        return core_out
 
-        first_ids = inputs[2]
-        last_ids = inputs[3]
-
-        char_embeddings = self.char_embedding(char_ids)
-        word_embeddings = self.word_embedding(word_ids)
-
-        char_dropout_embeddings = self.char_embedding_dropout(char_embeddings)
-        word_dropout_embeddings = self.word_embedding_dropout(word_embeddings)
-
-        # TODO hack, dropout skipped
-        char_core_out = self.char_core(char_dropout_embeddings, first_ids, last_ids)
-        word_core_out = self.word_core(word_dropout_embeddings)
-
+    # inputs of the form (char_net_out, word_net_out)
+    def forward_meta_net(self, inputs):
+        char_net_out, word_net_out = inputs
         with torch.no_grad():
             catted = torch.cat(
                 (
-                    char_core_out,
-                    word_core_out
+                    char_net_out,
+                    word_net_out
                 ),
                 dim=1
             )
-        meta_core_out = self.meta_core(catted)
+        core_out = self.meta_core(catted)
+        return core_out
 
-        char_probs = self.char_classifier(char_core_out)
-        word_probs = self.word_classifier(word_core_out)
-        meta_probs = self.meta_classifier(meta_core_out)
+    # inputs is of the form (char_ids, first_ids, last_ids)
+    def get_char_probabilities(self, inputs):
+        net_out = self.forward_char_net(inputs)
+        probs = self.char_classifier(net_out)
+        return probs
 
-        return char_probs, word_probs, meta_probs
+    def get_word_probabilities(self, ids):
+        net_out = self.forward_word_net(ids)
+        probs = self.word_classifier(net_out)
+        return probs
 
-    # sentence must separate words and punctuation by spaces
-    # e.g.: 'Ich verstehe , dass man die Lücken normalerweise nicht lässt .'
-    def tag_sentence(self, sentence):
-        chars, words, firsts, lasts = [], [], [], []
-        i = 0
-        for word in sentence.split():
-            chars.extend(word)
-            chars.append(' ')
-            words.append(word)
-            firsts.append(i)
-            i + len(word)
-            lasts.append(i-1)
-        chars = torch.tensor([chars[:-1]], dtype=torch.long, device=self.device)
-        words = torch.tensor([words], dtype=torch.long, device=self.device)
-        firsts = torch.tensor(firsts, dtype=torch.long, device=self.device)
-        lasts = torch.tensor(lasts, dtype=torch.long, device=self.device)
-        return [
-            self.tags.get_value(index=tag_index)
-            for tag_index
-            in self.predict(chars, words, firsts, lasts)
-        ]
+    # inputs of the form (char_ids, word_ids, first_ids, last_ids)
+    def get_meta_probabilities(self, inputs):
+        char_ids, word_ids, first_ids, last_ids = inputs
+
+        char_net_out = self.forward_char_net((char_ids, first_ids, last_ids))
+        word_net_out = self.forward_word_net(word_ids)
+        meta_net_out = self.forward_meta_net((char_net_out, word_net_out))
+        meta_probs = self.meta_classifier(meta_net_out)
+        return meta_probs
+
+    # inputs of the form (char_ids, word_ids, first_ids, last_ids)
+    def forward(self, inputs):
+        return self.get_meta_probabilities(inputs)
 
     def get_char_params(self):
         return chain(
@@ -186,78 +166,3 @@ class LSTMModel(nn.Module):
             self.char_optimizer.load_state_dict(dicts['char_optimizer'])
             self.word_optimizer.load_state_dict(dicts['word_optimizer'])
             self.meta_optimizer.load_state_dict(dicts['meta_optimizer'])
-
-    def log_char_net(self, writer, steps):
-        log_log_histogram(
-            writer=writer,
-            steps=steps,
-            name='grads/char_embedding',
-            tensor=self.char_embedding.weight.grad
-        )
-        log_log_histogram(
-            writer=writer,
-            steps=steps,
-            name='weights/char_embedding',
-            tensor=self.char_embedding.weight,
-        )
-        self.char_core.log_tensorboard(
-            writer=writer,
-            name='char_core/',
-            iteration_counter=steps
-        )
-        self.char_classifier.log_tensorboard(
-            writer=writer,
-            name='char_classifier/',
-            iteration_counter=steps
-        )
-
-    def log_word_net(self, writer, steps):
-        log_log_histogram(
-            writer=writer,
-            steps=steps,
-            name='grads/word_embedding',
-            tensor=self.word_embedding.weight.grad,
-        )
-        log_log_histogram(
-            writer=writer,
-            steps=steps,
-            name='weights/word_embedding',
-            tensor=self.word_embedding.weight,
-        )
-        self.word_core.log_tensorboard(
-            writer=writer,
-            name='word_core/',
-            iteration_counter=steps
-        )
-        self.word_classifier.log_tensorboard(
-            writer=writer,
-            name='word_classifier/',
-            iteration_counter=steps
-        )
-
-    def log_meta_net(self, writer, steps):
-        self.meta_core.log_tensorboard(
-            writer=writer,
-            name='meta_core/',
-            iteration_counter=steps
-        )
-        self.meta_classifier.log_tensorboard(
-            writer=writer,
-            name='meta_classifier/',
-            iteration_counter=steps
-        )
-
-    def log_embeddings(self, writer, steps, word_list, char_list):
-        print('save embeddings')
-        writer.add_embedding(
-            self.word_embedding.weight,
-            global_step=steps,
-            tag=f'word_embeddings{steps}',
-            metadata=word_list
-        )
-        writer.add_embedding(
-            self.char_embedding.weight,
-            global_step=steps,
-            tag=f'char_embeddings{steps}',
-            metadata=char_list
-        )

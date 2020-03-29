@@ -1,10 +1,7 @@
-from typing import List, Dict, Union, Any
-
-from conllu import parse
 from Corpora.ud_test_v2_0_conll2017.evaluation_script.conll17_ud_eval import load_conllu_file, ID, FORM
-from Lexicon import LabeledData, get_labeled_data_path, Sentence, TAG_NAMES, tag_name_to_column
 import json
-import os.path
+from Lexicon import LabeledData, get_labeled_data_path, Sentence, TAG_NAMES, tag_name_to_column
+from typing import List
 
 
 def new_sentence():
@@ -22,34 +19,6 @@ def new_sentence():
 
 def get_converted_data_path(dataset, language):
     return f'Datasets/{dataset}/{language}.json'
-
-
-def generate_enumerations():
-    with open('data.json', 'r') as file:
-        data = json.load(file)
-    for dataset in data:
-        for language in data[dataset]['languages']:
-            path = get_labeled_data_path(
-                dataset=dataset,
-                language=language
-            )
-            if os.path.isfile(path):
-                print(f'skipped creating dictionary for {dataset}: {language}')
-            else:
-                labeled_data = LabeledData.create_from_language(
-                    language=language,
-                    dataset=dataset
-                )
-
-                # add space manually because it is not observed in the words forming the sentences
-                labeled_data.lexicon.add_char(' ')
-
-                labeled_data.save(
-                    get_labeled_data_path(
-                        dataset=dataset,
-                        language=language
-                    )
-                )
 
 
 def load_converted_data(language, dataset):
@@ -158,7 +127,7 @@ def convert_data():
             )
 
 
-def test_print_converted_data():
+def print_converted_data_test():
     labeled_data = LabeledData.load('Dictionaries/conll17/de.json')
     sentences = load_converted_data(
         dataset='conll17',
@@ -175,5 +144,4 @@ def test_print_converted_data():
 
 
 if __name__ == "__main__":
-    # generate_enumerations()
     convert_data()

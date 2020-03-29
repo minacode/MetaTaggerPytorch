@@ -5,37 +5,9 @@ from tensorboardX import SummaryWriter
 from torch import tensor, long, save
 from torch.nn import MSELoss, CrossEntropyLoss
 from torch.optim import Adam, SGD
-from torch.optim.sparse_adam import  SparseAdam
-from tensorboard_logging import log_losses, log_probabilities, log_epoch
+from torch.optim.sparse_adam import SparseAdam
+from tensorboard_logging import log_epoch, log_chars, log_words, log_meta
 import unicodedata
-
-
-def log(writer, steps, model, n_sentences, one_loss, losses_out, combined_losses, probs, word_list, char_list):
-    if steps % 10:
-        return
-    log_losses(
-        writer=writer,
-        steps=steps,
-        n_sentences=n_sentences,
-        one_loss=one_loss,
-        losses_out=losses_out,
-        combined_losses=combined_losses
-    )
-
-    if not steps % 10:
-        log_probabilities(
-            writer=writer,
-            steps=steps,
-            probs=probs
-        )
-
-    if not steps % 1000:
-        model.log_embeddings(
-            writer=writer,
-            steps=steps,
-            word_list=word_list,
-            char_list=char_list
-        )
 
 
 def get_losses(loss_mode):
@@ -154,11 +126,12 @@ def evaluate_probs(probs, targets, loss_mode, writer, steps):
 def get_losses_for_training(probs, targets, losses, train_by):
     one_loss = {
         name: (1 - probs[name].sum(dim=1)).abs().sum(dim=0)
-        for name in losses
+        for name in probs
     }
+    names_in_probs_and_losses = set(probs.keys()).intersection(losses.keys())
     losses_out = {
         name: losses[name](probs[name], targets)
-        for name in losses
+        for name in names_in_probs_and_losses
     }
     combined_losses = {
         name: losses_out[name] + one_loss[name]
@@ -197,6 +170,112 @@ def get_char_list(labeled_data):
     return char_list_unk
 
 
+def train_char_net(model, sentence, labeled_data, losses, optimizers, tag_name, loss_mode, train_by, steps, writer):
+    n_tags = labeled_data.get_n_tags(tag_name=tag_name)
+
+    char_ids, _, targets, first_ids, last_ids = get_base_tensors(
+        sentence=sentence,
+        model=model,
+        tag_name=tag_name,
+        n_tags=n_tags,
+        loss_mode=loss_mode
+    )
+
+    probs = {
+        'char': model.get_char_probabilities((char_ids, first_ids, last_ids))
+    }
+
+    losses_for_training, one_loss, losses_out, combined_losses = get_losses_for_training(
+        probs=probs,
+        targets=targets,
+        losses=losses,
+        train_by=train_by
+    )
+    losses_for_training['char'].backward()
+    if not steps % 10:
+        log_chars(
+            writer=writer,
+            model=model,
+            steps=steps,
+            one_loss=one_loss,
+            losses_out=losses_out,
+            combined_losses=combined_losses
+        )
+    optimizers['char'].step()
+    optimizers['char'].zero_grad()
+
+
+def train_word_net(model, sentence, labeled_data, losses, optimizers, tag_name, loss_mode, train_by, steps, writer):
+    n_tags = labeled_data.get_n_tags(tag_name=tag_name)
+
+    _, word_ids, targets, _, _ = get_base_tensors(
+        sentence=sentence,
+        model=model,
+        tag_name=tag_name,
+        n_tags=n_tags,
+        loss_mode=loss_mode
+    )
+
+    probs = {
+        'word': model.get_word_probabilities(word_ids)
+    }
+
+    losses_for_training, one_loss, losses_out, combined_losses = get_losses_for_training(
+        probs=probs,
+        targets=targets,
+        losses=losses,
+        train_by=train_by
+    )
+    losses_for_training['word'].backward()
+    if not steps % 10:
+        log_words(
+            writer=writer,
+            model=model,
+            steps=steps,
+            one_loss=one_loss,
+            losses_out=losses_out,
+            combined_losses=combined_losses
+        )
+    optimizers['word'].step()
+    optimizers['word'].zero_grad()
+
+
+def train_meta_net(model, sentence, labeled_data, losses, optimizers, tag_name, loss_mode, train_by, steps, writer):
+    n_tags = labeled_data.get_n_tags(tag_name=tag_name)
+
+    char_ids, word_ids, targets, first_ids, last_ids = get_base_tensors(
+        sentence=sentence,
+        model=model,
+        tag_name=tag_name,
+        n_tags=n_tags,
+        loss_mode=loss_mode
+    )
+
+    probs = {
+        'meta': model.get_meta_probabilities((char_ids, word_ids, first_ids, last_ids))
+    }
+
+    losses_for_training, one_loss, losses_out, combined_losses = get_losses_for_training(
+        probs=probs,
+        targets=targets,
+        losses=losses,
+        train_by=train_by
+    )
+    losses_for_training['meta'].backward()
+    if not steps % 10:
+        log_meta(
+            writer=writer,
+            model=model,
+            steps=steps,
+            one_loss=one_loss,
+            losses_out=losses_out,
+            combined_losses=combined_losses
+        )
+    optimizers['meta'].step()
+    for name in optimizers:
+        optimizers[name].zero_grad()
+
+
 # TODO finish this
 def train(dataset, language, tag_name, model, labeled_data, sentences, epochs, test_data_path, timestamp):
     loss_mode = 'ce'
@@ -222,93 +301,74 @@ def train(dataset, language, tag_name, model, labeled_data, sentences, epochs, t
 
     model.train()
 
-    writer = SummaryWriter(comment=f'_{dataset}_{language}')
+    writer = SummaryWriter(comment=f'_{dataset}_{language}_{tag_name}')
 
     best_f1 = 0
     best_epoch = 0
 
-    n_sentences = len(sentences)
     steps = 0
 
     for n_epoch in range(epochs):
-        # print(f'starting epoch {n_epoch}')
+        print(f'starting epoch {n_epoch}')
         shuffle(sentences)
+        base_step = steps
         for sentence in sentences:
-            chars, words, targets, firsts, lasts = get_base_tensors(
-                sentence=sentence,
+            train_char_net(
                 model=model,
+                sentence=sentence,
+                labeled_data=labeled_data,
+                losses=losses,
+                optimizers=optimizers,
                 tag_name=tag_name,
-                n_tags=n_tags,
-                loss_mode=loss_mode
+                loss_mode=loss_mode,
+                train_by=train_by,
+                steps=steps,
+                writer=writer
             )
+            steps += 1
+        steps = base_step
 
-            cp, wp, mp = model([chars, words, firsts, lasts])
-            probs = {
-                'char': cp,
-                'word': wp,
-                'meta': mp
-            }
+        for sentence in sentences:
+            train_word_net(
+                model=model,
+                sentence=sentence,
+                labeled_data=labeled_data,
+                losses=losses,
+                optimizers=optimizers,
+                tag_name=tag_name,
+                loss_mode=loss_mode,
+                train_by=train_by,
+                steps=steps,
+                writer=writer
+            )
+            steps += 1
+        steps = base_step
 
-            if not steps % 100:
-                evaluate_probs(
-                    probs=probs,
-                    targets=targets,
-                    loss_mode=loss_mode,
-                    writer=writer,
-                    steps=steps
-                )
+        for sentence in sentences:
+            train_meta_net(
+                model=model,
+                sentence=sentence,
+                labeled_data=labeled_data,
+                losses=losses,
+                optimizers=optimizers,
+                tag_name=tag_name,
+                loss_mode=loss_mode,
+                train_by=train_by,
+                steps=steps,
+                writer=writer
+            )
+            steps += 1
 
-            losses_for_training, one_loss, losses_out, combined_losses = get_losses_for_training(
+        '''
+        if not steps % 100:
+            evaluate_probs(
                 probs=probs,
                 targets=targets,
-                losses=losses,
-                train_by=train_by
-            )
-
-            losses_for_training['char'].backward(retain_graph=True)
-            if not steps % 10:
-                model.log_char_net(
-                    writer=writer,
-                    steps=steps
-                )
-            optimizers['char'].step()
-            optimizers['char'].zero_grad()
-
-            losses_for_training['word'].backward(retain_graph=True)
-            if not steps % 10:
-                model.log_char_net(
-                    writer=writer,
-                    steps=steps
-                )
-            optimizers['word'].step()
-            optimizers['word'].zero_grad()
-
-            losses_for_training['meta'].backward()
-            if not steps % 10:
-                model.log_char_net(
-                    writer=writer,
-                    steps=steps
-                )
-            optimizers['meta'].step()
-            optimizers['meta'].zero_grad()
-
-            log(
+                loss_mode=loss_mode,
                 writer=writer,
-                steps=steps,
-                model=model,
-                n_sentences=n_sentences,
-                one_loss=one_loss,
-                losses_out=losses_out,
-                combined_losses=combined_losses,
-                probs=probs,
-                word_list=word_list,
-                char_list=char_list,
+                steps=steps
             )
-
-            for optimizer in optimizers.values():
-                optimizer.zero_grad()
-
-            steps += 1
+        '''
 
         # save model
         model_path = Path(f'Models/{dataset}/{language}/{tag_name}/{timestamp}')
@@ -329,6 +389,7 @@ def train(dataset, language, tag_name, model, labeled_data, sentences, epochs, t
         f1 = scores[tag_name].f1
         if f1 > best_f1:
             best_epoch = n_epoch
+            best_f1 = f1
 
         log_epoch(
             writer=writer,
