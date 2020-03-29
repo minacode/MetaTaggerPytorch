@@ -32,3 +32,10 @@ def log_log_histogram(writer, steps, name, tensor):
         (tensor.abs() + 1e-8).log(),
         steps
     )
+
+
+def log_epoch(writer, epoch, f1, best_f1, best_epoch):
+    writer.add_scalar('f1', f1, epoch)
+    writer.add_scalar('best_f1', best_f1, epoch)
+    writer.add_scalar('best_epoch', best_epoch, epoch)
+

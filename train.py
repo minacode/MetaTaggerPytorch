@@ -1,10 +1,13 @@
+from evaluation import evaluate_model
+from pathlib import Path
 from random import shuffle
 from tensorboardX import SummaryWriter
-from torch import tensor, long
+from torch import tensor, long, save
 from torch.nn import MSELoss, CrossEntropyLoss
 from torch.optim import Adam, SGD
 from torch.optim.sparse_adam import  SparseAdam
-from tensorboard_logging import log_losses, log_probabilities
+from tensorboard_logging import log_losses, log_probabilities, log_epoch
+import unicodedata
 
 
 def log(writer, steps, model, n_sentences, one_loss, losses_out, combined_losses, probs, word_list, char_list):
@@ -174,8 +177,28 @@ def get_losses_for_training(probs, targets, losses, train_by):
     return losses_for_training, one_loss, losses_out, combined_losses
 
 
+def get_word_list(labeled_data):
+    word_list = labeled_data.lexicon._words.to_dict()['elements']
+    word_list_unk = [
+        repr(repr(word)) for word in
+        ['unknown'] + word_list
+    ]
+    return word_list_unk
+
+
+def get_char_list(labeled_data):
+    char_list = labeled_data.lexicon._chars.to_dict()['elements']
+    char_list_unk = ['unknown']
+    for char in char_list:
+        # print(char, unicodedata.name(char))
+        char_list_unk.append(
+            unicodedata.name(char)
+        )
+    return char_list_unk
+
+
 # TODO finish this
-def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_list, char_list):
+def train(dataset, language, tag_name, model, labeled_data, sentences, epochs, test_data_path, timestamp):
     loss_mode = 'ce'
     train_by = 'out'
     optimizer_type = 'sgd'
@@ -187,6 +210,10 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
         'weight_decay': 0.999994
     }
 
+    n_tags = labeled_data.get_n_tags(tag_name=tag_name)
+    word_list = get_word_list(labeled_data=labeled_data)
+    char_list = get_char_list(labeled_data=labeled_data)
+
     losses = get_losses(loss_mode=loss_mode)
 
     optimizers = get_optimizers(model, optimizer_type, optimizer_args)
@@ -196,6 +223,9 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
     model.train()
 
     writer = SummaryWriter(comment=f'_{dataset}_{language}')
+
+    best_f1 = 0
+    best_epoch = 0
 
     n_sentences = len(sentences)
     steps = 0
@@ -279,5 +309,33 @@ def train(dataset, language, model, sentences, epochs, n_tags, tag_name, word_li
                 optimizer.zero_grad()
 
             steps += 1
+
+        # save model
+        model_path = Path(f'Models/{dataset}/{language}/{tag_name}/{timestamp}')
+        model_path.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+        file_name = Path(f'{n_epoch}.model')
+        save(model, model_path.joinpath(file_name))
+
+        # evaluate model
+        scores = evaluate_model(
+            model=model,
+            tag_name=tag_name,
+            path=test_data_path,
+            labeled_data=labeled_data
+        )
+        f1 = scores[tag_name].f1
+        if f1 > best_f1:
+            best_epoch = n_epoch
+
+        log_epoch(
+            writer=writer,
+            epoch=n_epoch,
+            f1=f1,
+            best_f1=best_f1,
+            best_epoch=best_epoch
+        )
 
     writer.close()

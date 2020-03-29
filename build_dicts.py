@@ -57,11 +57,7 @@ def load_converted_data(language, dataset):
         return json.load(file)
 
 
-def create_language_files(dataset: str, language: str, data: Dict[str, Any]) -> None:
-    base_path: str = data[dataset]['base_path']
-    train_directory: str = data[dataset]['train']
-    file_name: str = data[dataset]['file_name'].replace('<lang>', language)
-    path: str = f'{base_path}/{train_directory}/{file_name}'
+def create_language_files(dataset: str, language: str, path: str) -> None:
     # sorted list of all words from all sentences
     corpus = load_conllu_file(path)
 
@@ -148,78 +144,17 @@ def create_language_files(dataset: str, language: str, data: Dict[str, Any]) -> 
     )
 
 
-def create_language_files_external(dataset: str, language: str, data):
-    # print(f'Convert data for {language}…', end='')
-    labeled_data: LabeledData = LabeledData.load(
-        get_labeled_data_path(
-            dataset=dataset,
-            language=language
-        )
-    )
-
-    base_path: str = data[dataset]['base_path']
-    train_directory: str = data[dataset]['train']
-    file_name: str = data[dataset]['file_name'].replace('<lang>', language)
-    path: str = f'{base_path}/{train_directory}/{file_name}'
-    with open(path, 'r') as file:
-        parsed = parse(file.read())
-
-    # nearly , but tag_ids is more complicated
-    sentences: List[Dict[str, Union[List[int], Dict[str, List[int]]]]] = []
-    for sentence in parsed:
-        char_ids: List[int] = []
-        word_ids: List[int] = []
-        tag_ids: Dict[str, List[int]] = {
-            label: []
-            for label in labeled_data.labels
-        }
-        first_ids: List[int] = [0]
-        last_ids: List[int] = []
-        char_pos: int = 0
-        for token in sentence:
-            token_chars = labeled_data.lexicon.get_chars(token['form'])
-            char_ids.extend(token_chars)
-            char_ids.append(labeled_data.lexicon.get_char(' '))
-            char_pos += len(token_chars) + 1
-            last_ids.append(char_pos - 2)
-            first_ids.append(char_pos)
-
-            word_ids.append(
-                labeled_data.lexicon.get_word(token['form'])
-            )
-            for label in labeled_data.labels:
-                tag_ids[label].append(
-                    labeled_data.tags[label].get(token[label])
-                )
-
-        sentences.append({
-            'chars': char_ids,
-            'words': word_ids,
-            'firsts': first_ids,
-            'lasts': last_ids,
-            'tags': tag_ids
-        })
-
-    path = get_converted_data_path(
-        dataset=dataset,
-        language=language
-    )
-    with open(path, 'w') as file:
-        json.dump(sentences, file, indent=4)
-    del labeled_data, sentences, char_ids, word_ids, tag_ids, first_ids, last_ids
-    print(f'Convert data for {language} done.')
-
-
 # TODO save labels for upostag and xpostag
 def convert_data():
     with open('data.json', 'r') as file:
         data = json.load(file)
     for dataset in data:
-        for language in data[dataset]['languages']:
+        for language in data[dataset]:
+            train_path = data[dataset][language]['train']
             create_language_files(
                 dataset=dataset,
                 language=language,
-                data=data
+                path=train_path
             )
 
 

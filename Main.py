@@ -5,19 +5,18 @@ import torch
 from LSTMModel import LSTMModel
 from time import asctime
 from train import train
-import unicodedata
 from itertools import chain
 
 
 def run_complete_net(debug=False):
     dataset = 'conll17'
     tag_name = 'XPOS'
-    epochs = 50
+    epochs = 20
 
     with open('data.json', 'r') as file:
         data = json.load(file)
-    
-    for language in ['de']:  # data[dataset]['languages']:
+
+    for language in data[dataset]:
         labels = LabeledData.load(
             get_labeled_data_path(
                 dataset=dataset,
@@ -29,8 +28,7 @@ def run_complete_net(debug=False):
             dataset=dataset
         )
 
-        n_tags = len(labels.tags[tag_name])
-        # TODO hack
+        n_tags = labels.get_n_tags(tag_name=tag_name)
         embedding_dim = 400
 
         model = LSTMModel(
@@ -54,62 +52,20 @@ def run_complete_net(debug=False):
 
         model.initialise()
 
-        word_list = labels.lexicon._words.to_dict()['elements']
-        # TODO rename blubb to unknown
-        word_list_unk = [
-            repr(repr(word)) for word in
-            ['unknown'] + word_list
-        ]
-
-        char_list = labels.lexicon._chars.to_dict()['elements']
-        char_list_unk = ['unknown']
-        for char in char_list:
-            # print(char, unicodedata.name(char))
-            char_list_unk.append(
-                unicodedata.name(char)
-            )
-
-        torch.autograd.set_detect_anomaly(True)
+        timestamp = asctime().replace(' ', '_')
+        dev_path = data[dataset][language]['dev']
 
         train(
             dataset=dataset,
             language=language,
+            tag_name=tag_name,
             model=model,
+            labeled_data=labels,
             sentences=sentences,
             epochs=epochs,
-            n_tags=n_tags,
-            tag_name=tag_name,
-            word_list=word_list_unk,
-            char_list=char_list_unk
+            test_data_path=dev_path,
+            timestamp=timestamp
         )
-
-        timestamp = asctime().replace(' ', '_')
-        torch.save(model, f'Models/{dataset}/{language}_{timestamp}')
-
-        print('training finished, starting evaluation')
-
-        if False:
-            scores = model.dev_eval(
-                tag_name=tag_name,
-                path='Corpora/ud_test_v2_0_conll2017/gold/conll17-ud-test-2017-05-09/de.conllu',
-                labeled_data=labels
-            )
-            for category in scores:
-                print(category)
-                print(scores[category].precision)
-                print(scores[category].recall)
-                print(scores[category].f1)
-
-        # TODO save is broken, optimizers no longer in lstm-model
-        '''
-        torch.save(
-            model.get_state_dicts(
-                language=language,
-                dataset=dataset
-            ), 
-            f'Models/conll17/{language}'
-        )
-        '''
 
 
 if __name__ == "__main__":

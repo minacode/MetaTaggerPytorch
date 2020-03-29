@@ -1,0 +1,9 @@
+{
+  "conll17": {
+    "de": {
+      "train": "Corpora/UD_German/de-ud-train.conllu",
+      "dev": "Corpora/UD_German/de-ud-dev.conllu",
+      "test": ""
+    }
+  }
+}

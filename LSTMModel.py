@@ -1,21 +1,10 @@
-from build_dicts import ID, FORM, tag_name_to_column
 from Classifier import Classifier
 from core import WordLSTMCore, CharLSTMCore
-from Corpora.ud_test_v2_0_conll2017.evaluation_script.conll17_ud_eval import evaluate, load_conllu_file
 from itertools import chain
 import torch
 import torch.nn as nn
 import torch.nn.init as init
 from tensorboard_logging import log_log_histogram
-
-
-class BatchContainer:
-    def __init__(self, chars, words, tags, firsts, lasts):
-        self.chars = chars
-        self.words = words
-        self.tags = tags
-        self.firsts = firsts
-        self.lasts = lasts
 
 
 class LSTMModel(nn.Module):
@@ -198,72 +187,6 @@ class LSTMModel(nn.Module):
             self.word_optimizer.load_state_dict(dicts['word_optimizer'])
             self.meta_optimizer.load_state_dict(dicts['meta_optimizer'])
 
-    def dev_eval(self, tag_name, path, labeled_data):
-        self.eval()
-
-        work_data = load_conllu_file(path)
-        words_count = len(work_data.tokens)
-
-        tag_column_id = tag_name_to_column(tag_name=tag_name)
-
-        print(f'words: {words_count}')
-
-        # TODO make a function ouf of this that is also called in build_dicts
-        start_id = 0
-        while start_id < words_count:
-            end_id = start_id + 1
-            while end_id < words_count and work_data.words[end_id].columns[ID] != '1':
-                end_id += 1
-
-            # print(start_id, end_id)
-
-            char_ids = []
-            word_ids = []
-            first_ids = []
-            last_ids = []
-            char_pos = 0
-
-            # end_word_id stops on first token of next sentence
-            for token in work_data.words[start_id: end_id]:
-                token_chars = [
-                    labeled_data.lexicon.get_char(char)
-                    for char
-                    in work_data.characters[token.span.start: token.span.end]
-                ]
-                char_ids.extend(token_chars)
-                char_ids.append(labeled_data.lexicon.get_char(' '))
-                first_ids.append(char_pos)
-                char_pos += len(token_chars)
-                last_ids.append(char_pos - 1)
-                # add one for space between words
-                char_pos += 1
-                word_ids.append(
-                    labeled_data.lexicon.get_word(token.columns[FORM])
-                )
-
-            _, _, probabilities = self.forward([
-                torch.tensor(char_ids, dtype=torch.long, device=self.device),
-                torch.tensor(word_ids, dtype=torch.long, device=self.device),
-                torch.tensor(last_ids, dtype=torch.long, device=self.device),
-                torch.tensor(first_ids, dtype=torch.long, device=self.device),
-            ])
-
-            # TODO zip Tensor? make this better
-            for tag_id, token in zip(
-                    probabilities.argmax(dim=1),
-                    work_data.words[start_id: end_id]
-            ):
-                token.columns[tag_column_id] = labeled_data.tags[tag_name].get_value(tag_id)
-                print(token.columns)
-
-            start_id = end_id
-
-        gold_data = load_conllu_file(path)
-        scores = evaluate(gold_data, work_data)
-
-        # TODO maybe unpack this foreign scores
-        return scores
-
     def log_char_net(self, writer, steps):
         log_log_histogram(
             writer=writer,
@@ -338,25 +261,3 @@ class LSTMModel(nn.Module):
             tag=f'char_embeddings{steps}',
             metadata=char_list
         )
-
-    # TODO complete this
-    def algorithm_1(self, train_data):
-        self.initialze()
-        epochs = 10
-
-        best_f1 = 0
-
-        for _ in range(epochs):
-            char_logits, char_preds = self.run_char_model(train_data)
-            self.char_optimizer.step()
-            word_logits, word_preds = self.run_word_model(train_data)
-            self.word_optimizer.step()
-            meta_logits, meta_preds = self.run_meta_model(train_data)
-            self.meta_optimizer.step()
-
-            # TODO this returns much more than just a number right now. check!
-            f1 = self.dev_eval()
-            if f1 > best_f1:
-                # implement this
-                self.lock_best_model()
-                best_f1 = f1

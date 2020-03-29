@@ -269,6 +269,11 @@ class LabeledData(Savable):
                     # the UnknownEnumerator checks whether a collision with logical "unknown" happens via .add
                     self.tags[label].add(token[label])
 
+    def get_n_tags(self, tag_name: str) -> int:
+        if tag_name in self.tags:
+            return len(self.tags[tag_name])
+        raise Exception(f'unknown tag name: {tag_name}')
+
 
 def get_labeled_data_path(dataset: str, language: str) -> str:
     return f'Dictionaries/{dataset}/{language}.json'
