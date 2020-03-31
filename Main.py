@@ -123,5 +123,5 @@ if __name__ == "__main__":
             print('-> train new model with parameters')
             print('convert')
             print('-> convert datasets in data.json')
-            print('eval dataset language tag_name model_path data_path')
+            print('evaluate dataset language tag_name model_path data_path')
             print('-> evaluate model saved in model_path with conllu file in data_path')
