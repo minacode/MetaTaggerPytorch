@@ -3,6 +3,12 @@ from Corpora.ud_test_v2_0_conll2017.evaluation_script.conll17_ud_eval import eva
 import torch
 
 
+'''
+model: LSTMModel,
+tag_name: one of ['FEATURE', 'XPOS', 'POS']
+path: str, path to conllu file
+labeled_data: LabeledData
+'''
 def evaluate_model(model, tag_name, path, labeled_data):
     model.eval()
 
@@ -66,5 +72,4 @@ def evaluate_model(model, tag_name, path, labeled_data):
     gold_data = load_conllu_file(path)
     scores = evaluate(gold_data, work_data)
 
-    # TODO maybe unpack this foreign scores
     return scores
