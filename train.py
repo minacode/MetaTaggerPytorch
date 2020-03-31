@@ -282,6 +282,12 @@ def train(dataset, language, tag_name, model, labeled_data, sentences, epochs, t
     train_by = 'out'
     optimizer_type = 'sgd'
 
+    score_names = {
+        'POS': 'UPOS',
+        'XPOS': 'XPOS',
+        'FEATURE': 'Feats'
+    }
+
     optimizer_args = {
         'lr': 0.002,  # TODO test other values
         'betas': (0.9, 0.999),
@@ -299,8 +305,6 @@ def train(dataset, language, tag_name, model, labeled_data, sentences, epochs, t
     for optimizer in optimizers.values():
         optimizer.zero_grad()
 
-    model.train()
-
     writer = SummaryWriter(comment=f'_{dataset}_{language}_{tag_name}')
 
     best_f1 = 0
@@ -312,6 +316,7 @@ def train(dataset, language, tag_name, model, labeled_data, sentences, epochs, t
         print(f'starting epoch {n_epoch}')
         shuffle(sentences)
         base_step = steps
+        model.train()
         for sentence in sentences:
             train_char_net(
                 model=model,
@@ -386,7 +391,8 @@ def train(dataset, language, tag_name, model, labeled_data, sentences, epochs, t
             path=test_data_path,
             labeled_data=labeled_data
         )
-        f1 = scores[tag_name].f1
+        score_name = score_names[tag_name]
+        f1 = scores[score_name].f1
         if f1 > best_f1:
             best_epoch = n_epoch
             best_f1 = f1

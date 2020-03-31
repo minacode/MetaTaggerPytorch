@@ -10,13 +10,15 @@ from itertools import chain
 
 def run_complete_net(debug=False):
     dataset = 'conll17'
-    tag_name = 'XPOS'
-    epochs = 20
+    # tag_name = 'XPOS'
+    epochs = 10
 
     with open('data.json', 'r') as file:
         data = json.load(file)
 
-    for language in data[dataset]:
+    # for language in data[dataset]:
+    language = 'de'
+    for tag_name in ['FEATURE', 'XPOS', 'POS']:
         labels = LabeledData.load(
             get_labeled_data_path(
                 dataset=dataset,
@@ -29,7 +31,7 @@ def run_complete_net(debug=False):
         )
 
         n_tags = labels.get_n_tags(tag_name=tag_name)
-        embedding_dim = 400
+        embedding_dim = 100
 
         model = LSTMModel(
             n_chars=labels.lexicon.n_chars(),
@@ -69,5 +71,5 @@ def run_complete_net(debug=False):
 
 
 if __name__ == "__main__":
-    convert_data()
+    # convert_data()
     run_complete_net(debug=False)
